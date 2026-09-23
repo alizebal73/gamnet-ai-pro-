@@ -6,7 +6,7 @@ class SaleCreateRequest(BaseModel):
     item_type: str = Field(pattern="^(GAMING|PACKAGE|VIP|RECHARGE|FOOD|ACCESSORY)$")
     item_name: str = Field(min_length=1, max_length=200)
     duration_seconds: int = Field(default=0, ge=0, le=604800)
-    amount: int = Field(gt=0)
+    amount: int | None = Field(default=None, gt=0)
     payment_method: str = Field(pattern="^(CASH|CARD|BALANCE|MIXED)$")
     request_id: str = Field(min_length=1, max_length=100)
 
@@ -37,3 +37,5 @@ class SaleResponse(BaseModel):
     status: str
     payment_id: str
     payment_status: str
+    price_snapshot: int | None = None
+    pricing_rule_id: str | None = None

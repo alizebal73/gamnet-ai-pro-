@@ -7,6 +7,7 @@ from gamenet.server.db import utc_now_iso
 from gamenet.server.models.credit import CreditGrantRequest
 from gamenet.server.models.sale import PaymentConfirmRequest, PaymentResolutionRequest, RefundRequest, SaleCreateRequest, SaleResponse
 from gamenet.server.services.credit_service import CreditService
+from gamenet.server.services.pricing_service import PricingService
 
 
 class SaleService:
@@ -19,6 +20,7 @@ class SaleService:
             id=row["id"], customer_id=row["customer_id"], item_type=row["item_type"],
             item_name=row["item_name"], duration_seconds=row["duration_seconds"], amount=row["amount"],
             status=row["sale_status"], payment_id=row["payment_id"], payment_status=row["payment_status"],
+            price_snapshot=row["price_snapshot"], pricing_rule_id=row["pricing_rule_id"],
         )
 
     def create(self, payload: SaleCreateRequest, operator_id: str) -> SaleResponse:
@@ -33,16 +35,25 @@ class SaleService:
         customer = self._conn.execute("SELECT id FROM customers WHERE id = ? AND status = 'ACTIVE'", (payload.customer_id,)).fetchone()
         if not customer:
             raise HTTPException(status_code=404, detail="Customer not found")
+        quote = None
+        amount = payload.amount
+        if amount is None:
+            quote = PricingService(self._conn).quote(payload.item_type, payload.duration_seconds)
+            amount = quote.amount
+        elif payload.item_type == "GAMING":
+            quote = PricingService(self._conn).quote(payload.item_type, payload.duration_seconds)
+            if amount != quote.amount:
+                raise HTTPException(status_code=409, detail="Amount does not match the active pricing rule")
         now = utc_now_iso()
         sale_id = f"SALE-{uuid.uuid4().hex[:12].upper()}"
         payment_id = f"PAY-{uuid.uuid4().hex[:12].upper()}"
         self._conn.execute(
-            "INSERT INTO sales (id, customer_id, operator_id, item_type, item_name, duration_seconds, amount, status, request_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'CREATED', ?, ?, ?)",
-            (sale_id, payload.customer_id, operator_id, payload.item_type, payload.item_name, payload.duration_seconds, payload.amount, payload.request_id, now, now),
+            "INSERT INTO sales (id, customer_id, operator_id, item_type, item_name, duration_seconds, amount, status, request_id, created_at, updated_at, pricing_rule_id, price_snapshot) VALUES (?, ?, ?, ?, ?, ?, ?, 'CREATED', ?, ?, ?, ?, ?)",
+            (sale_id, payload.customer_id, operator_id, payload.item_type, payload.item_name, payload.duration_seconds, amount, payload.request_id, now, now, quote.pricing_rule_id if quote else None, amount),
         )
         self._conn.execute(
             "INSERT INTO payments (id, sale_id, method, amount, status, request_id, created_at, updated_at) VALUES (?, ?, ?, ?, 'PENDING', ?, ?, ?)",
-            (payment_id, sale_id, payload.payment_method, payload.amount, f"PAYMENT-{payload.request_id}", now, now),
+            (payment_id, sale_id, payload.payment_method, amount, f"PAYMENT-{payload.request_id}", now, now),
         )
         return self._response(self._conn.execute("SELECT s.*, p.id AS payment_id, p.status AS payment_status, s.status AS sale_status FROM sales s JOIN payments p ON p.sale_id = s.id WHERE s.id = ?", (sale_id,)).fetchone())
 
