@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     server_host: str = "127.0.0.1"
     server_port: int = 8765
     database_path: Path = PROJECT_ROOT / "data" / "gamenet.db"
+    backup_dir: Path = PROJECT_ROOT / "data" / "backups"
     migrations_dir: Path = PROJECT_ROOT / "database" / "migrations"
 
     heartbeat_interval_sec: int = 1
