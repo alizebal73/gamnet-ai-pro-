@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     auto_resume: bool = False
     one_active_session_per_customer: bool = True
     payment_provider: str = "mock"
+    auth_session_hours: int = 12
 
 
 settings = Settings()

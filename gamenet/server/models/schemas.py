@@ -31,3 +31,22 @@ class CustomerResponse(BaseModel):
 class CustomerListResponse(BaseModel):
     items: list[CustomerResponse]
     total: int
+
+
+class LoginRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=100)
+    password: str = Field(min_length=1, max_length=256)
+
+
+class CurrentUserResponse(BaseModel):
+    id: str
+    username: str
+    display_name: str | None
+    roles: list[str]
+
+
+class LoginResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    expires_at: str
+    user: CurrentUserResponse

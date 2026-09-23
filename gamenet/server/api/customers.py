@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from gamenet.server.db import get_connection
 from gamenet.server.models.schemas import (
@@ -7,19 +7,26 @@ from gamenet.server.models.schemas import (
     CustomerResponse,
 )
 from gamenet.server.services.customer_service import CustomerService
+from gamenet.server.security.auth import require_permission
 
 router = APIRouter(prefix="/customers", tags=["customers"])
 
 
 @router.post("", response_model=CustomerResponse, status_code=201)
-def create_customer(payload: CustomerCreate) -> CustomerResponse:
+def create_customer(
+    payload: CustomerCreate,
+    _user: dict = Depends(require_permission("customers.create")),
+) -> CustomerResponse:
     with get_connection() as conn:
         service = CustomerService(conn)
         return service.create_customer(payload)
 
 
 @router.get("/search", response_model=CustomerListResponse)
-def search_customers(q: str = Query(min_length=1)) -> CustomerListResponse:
+def search_customers(
+    q: str = Query(min_length=1),
+    _user: dict = Depends(require_permission("customers.view")),
+) -> CustomerListResponse:
     with get_connection() as conn:
         service = CustomerService(conn)
         items = service.search(q)
@@ -27,7 +34,10 @@ def search_customers(q: str = Query(min_length=1)) -> CustomerListResponse:
 
 
 @router.get("/by-number/{customer_number}", response_model=CustomerResponse)
-def get_customer_by_number(customer_number: int) -> CustomerResponse:
+def get_customer_by_number(
+    customer_number: int,
+    _user: dict = Depends(require_permission("customers.view")),
+) -> CustomerResponse:
     with get_connection() as conn:
         service = CustomerService(conn)
         customer = service.get_by_number(customer_number)
@@ -37,7 +47,10 @@ def get_customer_by_number(customer_number: int) -> CustomerResponse:
 
 
 @router.get("/{customer_id}", response_model=CustomerResponse)
-def get_customer(customer_id: str) -> CustomerResponse:
+def get_customer(
+    customer_id: str,
+    _user: dict = Depends(require_permission("customers.view")),
+) -> CustomerResponse:
     with get_connection() as conn:
         service = CustomerService(conn)
         customer = service.get_by_id(customer_id)
