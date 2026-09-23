@@ -16,6 +16,17 @@ class PaymentConfirmRequest(BaseModel):
     request_id: str = Field(min_length=1, max_length=100)
 
 
+class PaymentResolutionRequest(BaseModel):
+    status: str = Field(pattern="^(PAID|FAILED)$")
+    reference: str | None = Field(default=None, max_length=200)
+    request_id: str = Field(min_length=1, max_length=100)
+
+
+class RefundRequest(BaseModel):
+    reason: str = Field(min_length=1, max_length=500)
+    request_id: str = Field(min_length=1, max_length=100)
+
+
 class SaleResponse(BaseModel):
     id: str
     customer_id: str
