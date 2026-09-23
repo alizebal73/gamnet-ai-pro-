@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from gamenet.server.api import auth, credit, customer_auth, customers, devices, games, health, inventory, packages, pricing, reservations, sales, sessions, shifts, vip, websocket
+from gamenet.server.api import auth, credit, customer_auth, customers, devices, games, health, inventory, packages, pricing, reports, reservations, sales, sessions, shifts, vip, websocket
 
 api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(health.router)
@@ -19,3 +19,4 @@ api_router.include_router(games.router)
 api_router.include_router(shifts.router)
 api_router.include_router(inventory.router)
 api_router.include_router(reservations.router)
+api_router.include_router(reports.router)
