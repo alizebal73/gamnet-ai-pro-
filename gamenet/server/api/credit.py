@@ -2,10 +2,21 @@ from fastapi import APIRouter, Depends
 
 from gamenet.server.db import get_connection
 from gamenet.server.models.credit import CreditBalanceResponse, CreditGrantRequest, CreditGrantResponse
+from gamenet.server.models.balance import BalanceResponse
 from gamenet.server.security.auth import require_permission
+from gamenet.server.services.balance_service import BalanceService
 from gamenet.server.services.credit_service import CreditService
 
 router = APIRouter(prefix="/customers", tags=["credit"])
+
+
+@router.get("/{customer_id}/balance", response_model=BalanceResponse)
+def get_balance(
+    customer_id: str,
+    _user: dict = Depends(require_permission("credit.view")),
+) -> BalanceResponse:
+    with get_connection() as conn:
+        return BalanceResponse(customer_id=customer_id, amount=BalanceService(conn).balance(customer_id))
 
 
 @router.get("/{customer_id}/credit", response_model=CreditBalanceResponse)

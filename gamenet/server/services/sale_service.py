@@ -8,6 +8,7 @@ from gamenet.server.models.credit import CreditGrantRequest
 from gamenet.server.models.sale import PaymentConfirmRequest, PaymentResolutionRequest, RefundRequest, SaleCreateRequest, SaleResponse
 from gamenet.server.services.credit_service import CreditService
 from gamenet.server.services.audit_service import AuditService
+from gamenet.server.services.balance_service import BalanceService
 from gamenet.server.services.idempotency import claim_request
 from gamenet.server.services.pricing_service import PricingService
 
@@ -66,7 +67,7 @@ class SaleService:
 
     def confirm(self, sale_id: str, payload: PaymentConfirmRequest) -> SaleResponse:
         row = self._conn.execute(
-            "SELECT s.*, p.id AS payment_id, p.status AS payment_status, s.status AS sale_status FROM sales s JOIN payments p ON p.sale_id = s.id WHERE s.id = ?", (sale_id,)
+            "SELECT s.*, p.id AS payment_id, p.method AS payment_method, p.status AS payment_status, s.status AS sale_status FROM sales s JOIN payments p ON p.sale_id = s.id WHERE s.id = ?", (sale_id,)
         ).fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Sale not found")
@@ -80,6 +81,12 @@ class SaleService:
         ):
             return self._response(row)
         now = utc_now_iso()
+        if row["payment_method"] == "BALANCE":
+            BalanceService(self._conn).apply(
+                customer_id=row["customer_id"], delta_amount=-row["amount"], event_type="PURCHASE",
+                request_id=f"BALANCE-{sale_id}", sale_id=sale_id,
+                reason=f"Payment for sale {sale_id}", actor_id=row["operator_id"],
+            )
         self._conn.execute("UPDATE payments SET status = 'PAID', reference = ?, updated_at = ? WHERE id = ?", (payload.reference, now, row["payment_id"]))
         self._conn.execute("UPDATE sales SET status = 'PAID', updated_at = ? WHERE id = ?", (now, sale_id))
         if row["item_type"] in ("GAMING", "PACKAGE") and row["duration_seconds"] > 0:
@@ -90,6 +97,12 @@ class SaleService:
                     seconds=row["duration_seconds"], source=sale_id,
                     reason=f"Paid sale {sale_id}", request_id=f"CREDIT-{sale_id}",
                 ),
+            )
+        if row["item_type"] == "RECHARGE":
+            BalanceService(self._conn).apply(
+                customer_id=row["customer_id"], delta_amount=row["amount"], event_type="RECHARGE",
+                request_id=f"RECHARGE-{sale_id}", sale_id=sale_id,
+                reason=f"Recharge from sale {sale_id}", actor_id=row["operator_id"],
             )
         AuditService.record(
             self._conn, action="PAYMENT_CONFIRMED", entity_type="PAYMENT", entity_id=row["payment_id"],
