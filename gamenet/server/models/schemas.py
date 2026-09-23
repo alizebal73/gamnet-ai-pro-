@@ -8,6 +8,7 @@ class HealthResponse(BaseModel):
     version: str
     database: str
     migrations_applied: list[int]
+    database_integrity: bool = True
 
 
 class CustomerCreate(BaseModel):
