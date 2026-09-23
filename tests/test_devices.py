@@ -87,3 +87,40 @@ def test_expired_session_lease_is_paused_on_reconnect(client, admin_client):
 
     assert heartbeat.status_code == 200
     assert heartbeat.json()["session_status"] == "PAUSED"
+
+
+def test_customer_login_is_separate_and_rate_limited(client):
+    register_device()
+    customer = client.post(
+        "/api/v1/customers", json={"name": "Customer Login", "pin": "1234"}
+    ).json()
+    customer_number = customer["customer_number"]
+    endpoint = f"/api/v1/devices/PC-HEARTBEAT-01/customer-login"
+
+    missing_device_auth = client.post(
+        endpoint, json={"customer_number": customer_number, "pin": "1234"}
+    )
+    assert missing_device_auth.status_code == 401
+
+    valid = client.post(
+        endpoint,
+        headers={"X-Device-Token": "device-secret"},
+        json={"customer_number": customer_number, "pin": "1234"},
+    )
+    assert valid.status_code == 200
+    assert valid.json()["customer_id"] == customer["id"]
+    assert valid.json()["gaming_credit_seconds"] == 0
+
+    for _ in range(5):
+        invalid = client.post(
+            endpoint,
+            headers={"X-Device-Token": "device-secret"},
+            json={"customer_number": customer_number, "pin": "wrong"},
+        )
+        assert invalid.status_code == 401
+    locked = client.post(
+        endpoint,
+        headers={"X-Device-Token": "device-secret"},
+        json={"customer_number": customer_number, "pin": "1234"},
+    )
+    assert locked.status_code == 423
