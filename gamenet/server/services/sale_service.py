@@ -42,6 +42,7 @@ class SaleService:
         quote = None
         amount = payload.amount
         package_id = payload.package_id
+        vip_plan_id = payload.vip_plan_id
         item_name = payload.item_name
         duration_seconds = payload.duration_seconds
         if payload.item_type == "PACKAGE":
@@ -51,6 +52,13 @@ class SaleService:
             amount = package["price"]
             item_name = package["name"]
             duration_seconds = package["duration_seconds"] + package["bonus_seconds"]
+        if payload.item_type == "VIP":
+            vip_plan = self._conn.execute("SELECT * FROM vip_plans WHERE id = ? AND active = 1", (vip_plan_id,)).fetchone()
+            if not vip_plan:
+                raise HTTPException(status_code=404, detail="Active VIP plan not found")
+            amount = vip_plan["price"]
+            item_name = vip_plan["name"]
+            duration_seconds = 0
         if amount is None:
             quote = PricingService(self._conn).quote(payload.item_type, payload.duration_seconds)
             amount = quote.amount
@@ -62,8 +70,8 @@ class SaleService:
         sale_id = f"SALE-{uuid.uuid4().hex[:12].upper()}"
         payment_id = f"PAY-{uuid.uuid4().hex[:12].upper()}"
         self._conn.execute(
-            "INSERT INTO sales (id, customer_id, operator_id, item_type, item_name, duration_seconds, amount, status, request_id, created_at, updated_at, pricing_rule_id, price_snapshot, package_id) VALUES (?, ?, ?, ?, ?, ?, ?, 'CREATED', ?, ?, ?, ?, ?, ?)",
-            (sale_id, payload.customer_id, operator_id, payload.item_type, item_name, duration_seconds, amount, payload.request_id, now, now, quote.pricing_rule_id if quote else None, amount, package_id),
+            "INSERT INTO sales (id, customer_id, operator_id, item_type, item_name, duration_seconds, amount, status, request_id, created_at, updated_at, pricing_rule_id, price_snapshot, package_id, vip_plan_id) VALUES (?, ?, ?, ?, ?, ?, ?, 'CREATED', ?, ?, ?, ?, ?, ?, ?)",
+            (sale_id, payload.customer_id, operator_id, payload.item_type, item_name, duration_seconds, amount, payload.request_id, now, now, quote.pricing_rule_id if quote else None, amount, package_id, vip_plan_id),
         )
         self._conn.execute(
             "INSERT INTO payments (id, sale_id, method, amount, status, request_id, created_at, updated_at) VALUES (?, ?, ?, ?, 'PENDING', ?, ?, ?)",
@@ -119,6 +127,14 @@ class SaleService:
                 customer_id=row["customer_id"], delta_amount=row["amount"], event_type="RECHARGE",
                 request_id=f"RECHARGE-{sale_id}", sale_id=sale_id,
                 reason=f"Recharge from sale {sale_id}", actor_id=row["operator_id"],
+            )
+        if row["item_type"] == "VIP" and row["vip_plan_id"]:
+            plan = self._conn.execute("SELECT duration_days FROM vip_plans WHERE id = ?", (row["vip_plan_id"],)).fetchone()
+            starts_at = datetime.now(UTC).replace(microsecond=0)
+            expires_at = (starts_at + timedelta(days=plan["duration_days"])).isoformat().replace("+00:00", "Z")
+            self._conn.execute(
+                "INSERT INTO customer_vip (id, customer_id, plan_id, sale_id, starts_at, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (f"CUSTOMER-VIP-{uuid.uuid4().hex[:12].upper()}", row["customer_id"], row["vip_plan_id"], sale_id, starts_at.isoformat().replace("+00:00", "Z"), expires_at, now),
             )
         AuditService.record(
             self._conn, action="PAYMENT_CONFIRMED", entity_type="PAYMENT", entity_id=row["payment_id"],

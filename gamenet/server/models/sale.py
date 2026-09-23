@@ -10,6 +10,7 @@ class SaleCreateRequest(BaseModel):
     payment_method: str = Field(pattern="^(CASH|CARD|BALANCE|MIXED)$")
     request_id: str = Field(min_length=1, max_length=100)
     package_id: str | None = None
+    vip_plan_id: str | None = None
 
 
 class PaymentConfirmRequest(BaseModel):
