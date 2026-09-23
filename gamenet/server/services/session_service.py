@@ -6,6 +6,8 @@ from fastapi import HTTPException
 
 from gamenet.server.db import utc_now_iso
 from gamenet.server.models.session import SessionActionRequest, SessionConsumeRequest, SessionResponse, SessionStartRequest
+from gamenet.server.services.audit_service import AuditService
+from gamenet.server.services.idempotency import claim_request
 
 
 class SessionService:
@@ -66,12 +68,22 @@ class SessionService:
             "UPDATE pcs SET status = 'BUSY', updated_at = ? WHERE id = ?", (now_iso, payload.pc_id)
         )
         self._event(session_id, "STARTED", None, user_id, now_iso)
+        AuditService.record(
+            self._conn, action="SESSION_STARTED", entity_type="SESSION", entity_id=session_id,
+            request_id=payload.request_id, user_id=user_id, customer_id=payload.customer_id,
+            pc_id=payload.pc_id, new_value={"status": "ACTIVE"},
+        )
         return self._response(self._conn.execute("SELECT * FROM sessions WHERE id = ?", (session_id,)).fetchone())
 
     def action(self, session_id: str, payload: SessionActionRequest, user_id: str, action: str) -> SessionResponse:
         row = self._conn.execute("SELECT * FROM sessions WHERE id = ?", (session_id,)).fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Session not found")
+        if not claim_request(
+            self._conn, request_id=payload.request_id, operation=f"SESSION_{action.upper()}",
+            entity_type="SESSION", entity_id=session_id,
+        ):
+            return self._response(row)
         transitions = {"pause": ("ACTIVE", "PAUSED", "PAUSED"), "resume": ("PAUSED", "ACTIVE", "RESUMED"), "end": (("ACTIVE", "PAUSED"), "ENDED", "ENDED")}
         allowed, target, event = transitions[action]
         if row["status"] not in ((allowed,) if isinstance(allowed, str) else allowed):
@@ -84,6 +96,12 @@ class SessionService:
         if target == "ENDED":
             self._conn.execute("UPDATE pcs SET status = 'READY', updated_at = ? WHERE id = ?", (now, row["pc_id"]))
         self._event(session_id, event, payload.reason, user_id, now)
+        AuditService.record(
+            self._conn, action=f"SESSION_{event}", entity_type="SESSION", entity_id=session_id,
+            request_id=payload.request_id, user_id=user_id, customer_id=row["customer_id"],
+            pc_id=row["pc_id"], reason=payload.reason,
+            old_value={"status": row["status"]}, new_value={"status": target},
+        )
         return self._response(self._conn.execute("SELECT * FROM sessions WHERE id = ?", (session_id,)).fetchone())
 
     def consume(self, session_id: str, payload: SessionConsumeRequest) -> SessionResponse:
@@ -93,6 +111,11 @@ class SessionService:
         session = self._conn.execute("SELECT * FROM sessions WHERE id = ?", (session_id,)).fetchone()
         if not session or session["status"] != "ACTIVE":
             raise HTTPException(status_code=409, detail="Session is not active")
+        if not claim_request(
+            self._conn, request_id=payload.request_id, operation="SESSION_CONSUME",
+            entity_type="SESSION", entity_id=session_id,
+        ):
+            return self._response(session)
         remaining = payload.seconds
         now = utc_now_iso()
         entitlements = self._conn.execute(
@@ -116,6 +139,11 @@ class SessionService:
         if remaining:
             raise HTTPException(status_code=409, detail="Insufficient valid credit")
         self._conn.execute("UPDATE sessions SET consumed_seconds = consumed_seconds + ?, updated_at = ? WHERE id = ?", (payload.seconds, now, session_id))
+        AuditService.record(
+            self._conn, action="SESSION_CONSUMED", entity_type="SESSION", entity_id=session_id,
+            request_id=payload.request_id, customer_id=session["customer_id"], amount=payload.seconds,
+            new_value={"consumed_seconds": session["consumed_seconds"] + payload.seconds},
+        )
         return self._response(self._conn.execute("SELECT * FROM sessions WHERE id = ?", (session_id,)).fetchone())
 
     def _event(self, session_id: str, event_type: str, reason: str | None, user_id: str, created_at: str) -> None:

@@ -33,12 +33,12 @@ def resolve_payment(sale_id: str, payload: PaymentResolutionRequest, _user: dict
 
 
 @router.post("/{sale_id}/refund", response_model=SaleResponse)
-def request_refund(sale_id: str, payload: RefundRequest, _user: dict = Depends(require_permission("payments.refund_request"))) -> SaleResponse:
+def request_refund(sale_id: str, payload: RefundRequest, user: dict = Depends(require_permission("payments.refund_request"))) -> SaleResponse:
     with get_connection() as conn:
-        return SaleService(conn).request_refund(sale_id, payload)
+        return SaleService(conn).request_refund(sale_id, payload, user["id"])
 
 
 @router.post("/{sale_id}/refund/approve", response_model=SaleResponse)
-def approve_refund(sale_id: str, payload: RefundRequest, _user: dict = Depends(require_permission("payments.refund_approve"))) -> SaleResponse:
+def approve_refund(sale_id: str, payload: RefundRequest, user: dict = Depends(require_permission("payments.refund_approve"))) -> SaleResponse:
     with get_connection() as conn:
-        return SaleService(conn).approve_refund(sale_id, payload)
+        return SaleService(conn).approve_refund(sale_id, payload, user["id"])

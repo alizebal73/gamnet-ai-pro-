@@ -24,4 +24,4 @@ def grant_credit(
     _user: dict = Depends(require_permission("credit.grant")),
 ) -> CreditGrantResponse:
     with get_connection() as conn:
-        return CreditService(conn).grant(customer_id, payload)
+        return CreditService(conn).grant(customer_id, payload, _user["id"])

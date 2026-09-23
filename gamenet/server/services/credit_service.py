@@ -3,6 +3,7 @@ import uuid
 
 from gamenet.server.db import utc_now_iso
 from gamenet.server.models.credit import CreditGrantRequest, CreditGrantResponse, CreditBalanceResponse
+from gamenet.server.services.audit_service import AuditService
 
 
 class CreditService:
@@ -21,7 +22,7 @@ class CreditService:
         ).fetchone()
         return CreditBalanceResponse(customer_id=customer_id, total_seconds=int(row["total_seconds"]))
 
-    def grant(self, customer_id: str, payload: CreditGrantRequest) -> CreditGrantResponse:
+    def grant(self, customer_id: str, payload: CreditGrantRequest, actor_id: str | None = None) -> CreditGrantResponse:
         existing = self._conn.execute(
             "SELECT entitlement_id FROM entitlement_ledger WHERE request_id = ?", (payload.request_id,)
         ).fetchone()
@@ -55,6 +56,12 @@ class CreditService:
             """,
             (f"LEDGER-{uuid.uuid4().hex[:12].upper()}", entitlement_id, customer_id,
              payload.seconds, payload.request_id, payload.reason, now),
+        )
+        AuditService.record(
+            self._conn, action="CREDIT_GRANTED", entity_type="ENTITLEMENT", entity_id=entitlement_id,
+            request_id=payload.request_id, user_id=actor_id, customer_id=customer_id,
+            amount=payload.seconds, reason=payload.reason,
+            new_value={"credit_type": payload.credit_type, "seconds": payload.seconds},
         )
         balance = self.balance(customer_id)
         return CreditGrantResponse(
