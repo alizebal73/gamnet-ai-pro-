@@ -3,11 +3,13 @@ import sys
 from PyQt6.QtWidgets import QApplication
 
 from gamenet.client_agent.ui import ClientWindow
+from gamenet.client_agent.config import ClientConfig
 
 
 def main() -> int:
     application = QApplication(sys.argv)
-    window = ClientWindow("http://127.0.0.1:8765", "PC-01", "")
+    config = ClientConfig.from_environment()
+    window = ClientWindow(config.server_url, config.pc_id, config.device_token)
     window.showFullScreen()
     return application.exec()
 
