@@ -27,6 +27,22 @@ def list_games(_user: dict = Depends(require_permission("games.view"))) -> list[
     return [_game_response(dict(row)) for row in rows]
 
 
+@router.get("/devices/{pc_id}/games", response_model=list[GameResponse])
+def list_device_games(pc_id: str, token: str | None = Depends(device_token)) -> list[GameResponse]:
+    with get_connection() as conn:
+        authenticate_device(conn, pc_id, token)
+        rows = conn.execute(
+            """
+            SELECT g.* FROM games g
+            LEFT JOIN game_device_config c ON c.game_id = g.id AND c.pc_id = ?
+            WHERE g.enabled = 1 AND (c.game_id IS NULL OR c.enabled = 1)
+            ORDER BY g.display_order, g.name
+            """,
+            (pc_id,),
+        ).fetchall()
+    return [_game_response(dict(row)) for row in rows]
+
+
 @router.post("/games", response_model=GameResponse, status_code=201)
 def create_game(payload: GameCreateRequest, user: dict = Depends(require_permission("games.manage"))) -> GameResponse:
     game_id = f"GAME-{uuid.uuid4().hex[:12].upper()}"
