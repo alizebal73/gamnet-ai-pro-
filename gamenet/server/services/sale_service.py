@@ -43,6 +43,7 @@ class SaleService:
         amount = payload.amount
         package_id = payload.package_id
         vip_plan_id = payload.vip_plan_id
+        inventory_item_id = payload.inventory_item_id
         item_name = payload.item_name
         duration_seconds = payload.duration_seconds
         if payload.item_type == "PACKAGE":
@@ -59,6 +60,14 @@ class SaleService:
             amount = vip_plan["price"]
             item_name = vip_plan["name"]
             duration_seconds = 0
+        if payload.item_type in ("FOOD", "ACCESSORY"):
+            item = self._conn.execute("SELECT * FROM inventory_items WHERE id = ? AND active = 1", (inventory_item_id,)).fetchone()
+            if not item:
+                raise HTTPException(status_code=404, detail="Inventory item is required for this sale")
+            amount = item["sale_price"]
+            item_name = item["name"]
+            if item["stock"] < 1:
+                raise HTTPException(status_code=409, detail="Inventory stock is empty")
         if amount is None:
             quote = PricingService(self._conn).quote(payload.item_type, payload.duration_seconds)
             amount = quote.amount
@@ -70,8 +79,8 @@ class SaleService:
         sale_id = f"SALE-{uuid.uuid4().hex[:12].upper()}"
         payment_id = f"PAY-{uuid.uuid4().hex[:12].upper()}"
         self._conn.execute(
-            "INSERT INTO sales (id, customer_id, operator_id, item_type, item_name, duration_seconds, amount, status, request_id, created_at, updated_at, pricing_rule_id, price_snapshot, package_id, vip_plan_id) VALUES (?, ?, ?, ?, ?, ?, ?, 'CREATED', ?, ?, ?, ?, ?, ?, ?)",
-            (sale_id, payload.customer_id, operator_id, payload.item_type, item_name, duration_seconds, amount, payload.request_id, now, now, quote.pricing_rule_id if quote else None, amount, package_id, vip_plan_id),
+            "INSERT INTO sales (id, customer_id, operator_id, item_type, item_name, duration_seconds, amount, status, request_id, created_at, updated_at, pricing_rule_id, price_snapshot, package_id, vip_plan_id, inventory_item_id) VALUES (?, ?, ?, ?, ?, ?, ?, 'CREATED', ?, ?, ?, ?, ?, ?, ?, ?)",
+            (sale_id, payload.customer_id, operator_id, payload.item_type, item_name, duration_seconds, amount, payload.request_id, now, now, quote.pricing_rule_id if quote else None, amount, package_id, vip_plan_id, inventory_item_id),
         )
         self._conn.execute(
             "INSERT INTO payments (id, sale_id, method, amount, status, request_id, created_at, updated_at) VALUES (?, ?, ?, ?, 'PENDING', ?, ?, ?)",
@@ -136,6 +145,12 @@ class SaleService:
                 "INSERT INTO customer_vip (id, customer_id, plan_id, sale_id, starts_at, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (f"CUSTOMER-VIP-{uuid.uuid4().hex[:12].upper()}", row["customer_id"], row["vip_plan_id"], sale_id, starts_at.isoformat().replace("+00:00", "Z"), expires_at, now),
             )
+        if row["item_type"] in ("FOOD", "ACCESSORY") and row["inventory_item_id"]:
+            inventory = self._conn.execute("SELECT stock FROM inventory_items WHERE id = ?", (row["inventory_item_id"],)).fetchone()
+            if not inventory or inventory["stock"] < 1:
+                raise HTTPException(status_code=409, detail="Inventory stock is empty")
+            self._conn.execute("UPDATE inventory_items SET stock = stock - 1, updated_at = ? WHERE id = ?", (now, row["inventory_item_id"]))
+            self._conn.execute("INSERT INTO inventory_transactions (id, item_id, delta_stock, event_type, sale_id, request_id, reason, created_at) VALUES (?, ?, -1, 'SALE', ?, ?, ?, ?)", (f"INV-TX-{uuid.uuid4().hex[:12].upper()}", row["inventory_item_id"], sale_id, f"INVENTORY-{sale_id}", f"Sale {sale_id}", now))
         AuditService.record(
             self._conn, action="PAYMENT_CONFIRMED", entity_type="PAYMENT", entity_id=row["payment_id"],
             request_id=payload.request_id, user_id=row["operator_id"], customer_id=row["customer_id"],

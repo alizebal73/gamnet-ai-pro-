@@ -1,4 +1,4 @@
-def test_balance_recharge_debit_and_insufficient_payment(client):
+def test_balance_recharge_debit_and_insufficient_payment(client, admin_client):
     customer = client.post(
         "/api/v1/customers", json={"name": "Balance Customer", "pin": "1234"}
     ).json()
@@ -15,12 +15,16 @@ def test_balance_recharge_debit_and_insufficient_payment(client):
         json={"reference": "CASH-5000", "request_id": "BALANCE-PAY-1"},
     ).status_code == 200
     assert client.get(f"/api/v1/customers/{customer['id']}/balance").json()["amount"] == 5000
+    inventory = admin_client.post(
+        "/api/v1/inventory",
+        json={"name": "Balance Snack", "sku": "BALANCE-SNACK", "purchase_price": 100, "sale_price": 3000, "initial_stock": 2},
+    ).json()
 
     purchase = client.post(
         "/api/v1/sales",
         json={
             "customer_id": customer["id"], "item_type": "FOOD", "item_name": "Snack",
-            "amount": 3000, "payment_method": "BALANCE", "request_id": "BALANCE-SALE-1",
+            "inventory_item_id": inventory["id"], "payment_method": "BALANCE", "request_id": "BALANCE-SALE-1",
         },
     ).json()
     confirmed = client.post(
@@ -41,7 +45,7 @@ def test_balance_recharge_debit_and_insufficient_payment(client):
         "/api/v1/sales",
         json={
             "customer_id": customer["id"], "item_type": "FOOD", "item_name": "Expensive",
-            "amount": 2500, "payment_method": "BALANCE", "request_id": "BALANCE-SALE-2",
+            "inventory_item_id": inventory["id"], "payment_method": "BALANCE", "request_id": "BALANCE-SALE-2",
         },
     ).json()
     rejected = client.post(

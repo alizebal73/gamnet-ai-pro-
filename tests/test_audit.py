@@ -17,12 +17,16 @@ def test_sensitive_operations_write_audit_once(client, admin_client):
     )
     assert first_grant.status_code == 201
     assert duplicate_grant.status_code == 201
+    inventory = admin_client.post(
+        "/api/v1/inventory",
+        json={"name": "Audit Snack", "sku": "AUDIT-SNACK", "purchase_price": 100, "sale_price": 1000, "initial_stock": 1},
+    ).json()
 
     sale = client.post(
         "/api/v1/sales",
         json={
             "customer_id": customer["id"], "item_type": "FOOD", "item_name": "Audit Snack",
-            "duration_seconds": 0, "amount": 1000, "payment_method": "CASH",
+            "inventory_item_id": inventory["id"], "duration_seconds": 0, "payment_method": "CASH",
             "request_id": "AUDIT-SALE-1",
         },
     ).json()

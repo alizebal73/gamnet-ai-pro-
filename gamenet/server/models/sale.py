@@ -11,6 +11,7 @@ class SaleCreateRequest(BaseModel):
     request_id: str = Field(min_length=1, max_length=100)
     package_id: str | None = None
     vip_plan_id: str | None = None
+    inventory_item_id: str | None = None
 
 
 class PaymentConfirmRequest(BaseModel):
