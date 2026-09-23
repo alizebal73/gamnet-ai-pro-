@@ -22,6 +22,8 @@ This is a factual snapshot of the current implementation, not a claim of final c
 | Client UI | MISSING | Customer API exists, but customer PyQt UI is pending |
 | Game catalog/launch/process monitor | MISSING | Not implemented |
 | Kiosk/Lockdown | MISSING | Windows policy/service integration is not implemented |
-| Inventory/shifts/reservations | MISSING | Not implemented |
+| Inventory | PARTIAL | Catalog, stock ledger and sale decrement exist; reconciliation and purchase workflow are pending |
+| Shifts | PARTIAL | Open/close and cash difference exist; automatic cash movement from all sales is pending |
+| Reservations | PARTIAL | PC reservation and overlap detection exist; queue/no-show/fulfillment workflow is pending |
 | Reports/alerts/reconciliation | MISSING | Not implemented |
 | Backup/restore/installer | MISSING | Not implemented |

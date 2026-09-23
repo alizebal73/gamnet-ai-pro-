@@ -7,11 +7,12 @@
 - Credit and balance operations use idempotent ledger request IDs.
 - Client heartbeat renews a session lease.
 - An expired lease is paused on the next heartbeat.
+- A recovery scan can pause expired leases independently of a client heartbeat.
 - Client reconnect does not auto-resume a paused session.
 
 ## Current limitations
 
-- There is no independent background worker that pauses leases while a client is fully offline.
+- The recovery scan is callable, but there is no long-running scheduled worker yet.
 - Server restart recovery and incomplete payment recovery are not implemented.
 - Database integrity safe mode is not implemented.
 - Backup, restore rehearsal, disk-full handling, and reconciliation workers are not implemented.
