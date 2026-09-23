@@ -1,5 +1,6 @@
 import sqlite3
 import uuid
+from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException
 
@@ -40,6 +41,16 @@ class SaleService:
             raise HTTPException(status_code=404, detail="Customer not found")
         quote = None
         amount = payload.amount
+        package_id = payload.package_id
+        item_name = payload.item_name
+        duration_seconds = payload.duration_seconds
+        if payload.item_type == "PACKAGE":
+            package = self._conn.execute("SELECT * FROM packages WHERE id = ? AND active = 1", (package_id,)).fetchone()
+            if not package:
+                raise HTTPException(status_code=404, detail="Active package not found")
+            amount = package["price"]
+            item_name = package["name"]
+            duration_seconds = package["duration_seconds"] + package["bonus_seconds"]
         if amount is None:
             quote = PricingService(self._conn).quote(payload.item_type, payload.duration_seconds)
             amount = quote.amount
@@ -51,8 +62,8 @@ class SaleService:
         sale_id = f"SALE-{uuid.uuid4().hex[:12].upper()}"
         payment_id = f"PAY-{uuid.uuid4().hex[:12].upper()}"
         self._conn.execute(
-            "INSERT INTO sales (id, customer_id, operator_id, item_type, item_name, duration_seconds, amount, status, request_id, created_at, updated_at, pricing_rule_id, price_snapshot) VALUES (?, ?, ?, ?, ?, ?, ?, 'CREATED', ?, ?, ?, ?, ?)",
-            (sale_id, payload.customer_id, operator_id, payload.item_type, payload.item_name, payload.duration_seconds, amount, payload.request_id, now, now, quote.pricing_rule_id if quote else None, amount),
+            "INSERT INTO sales (id, customer_id, operator_id, item_type, item_name, duration_seconds, amount, status, request_id, created_at, updated_at, pricing_rule_id, price_snapshot, package_id) VALUES (?, ?, ?, ?, ?, ?, ?, 'CREATED', ?, ?, ?, ?, ?, ?)",
+            (sale_id, payload.customer_id, operator_id, payload.item_type, item_name, duration_seconds, amount, payload.request_id, now, now, quote.pricing_rule_id if quote else None, amount, package_id),
         )
         self._conn.execute(
             "INSERT INTO payments (id, sale_id, method, amount, status, request_id, created_at, updated_at) VALUES (?, ?, ?, ?, 'PENDING', ?, ?, ?)",
@@ -90,12 +101,17 @@ class SaleService:
         self._conn.execute("UPDATE payments SET status = 'PAID', reference = ?, updated_at = ? WHERE id = ?", (payload.reference, now, row["payment_id"]))
         self._conn.execute("UPDATE sales SET status = 'PAID', updated_at = ? WHERE id = ?", (now, sale_id))
         if row["item_type"] in ("GAMING", "PACKAGE") and row["duration_seconds"] > 0:
+            expires_at = None
+            if row["package_id"]:
+                package = self._conn.execute("SELECT expiry_days FROM packages WHERE id = ?", (row["package_id"],)).fetchone()
+                if package and package["expiry_days"]:
+                    expires_at = (datetime.now(UTC) + timedelta(days=package["expiry_days"])).replace(microsecond=0).isoformat().replace("+00:00", "Z")
             CreditService(self._conn).grant(
                 row["customer_id"],
                 CreditGrantRequest(
                     credit_type="PACKAGE" if row["item_type"] == "PACKAGE" else "PAID",
                     seconds=row["duration_seconds"], source=sale_id,
-                    reason=f"Paid sale {sale_id}", request_id=f"CREDIT-{sale_id}",
+                    reason=f"Paid sale {sale_id}", request_id=f"CREDIT-{sale_id}", expires_at=expires_at,
                 ),
             )
         if row["item_type"] == "RECHARGE":
