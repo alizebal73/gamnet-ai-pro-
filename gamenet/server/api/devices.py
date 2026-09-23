@@ -22,8 +22,12 @@ def _heartbeat(conn: sqlite3.Connection, pc_id: str, payload: HeartbeatRequest, 
     if payload.session_id:
         session = conn.execute("SELECT id, status, lease_id, lease_expires_at FROM sessions WHERE id = ? AND pc_id = ?", (payload.session_id, pc_id)).fetchone()
         if session and session["status"] == "ACTIVE":
-            lease_expires = (now + timedelta(seconds=10)).isoformat().replace("+00:00", "Z")
-            conn.execute("UPDATE sessions SET lease_expires_at = ?, updated_at = ? WHERE id = ?", (lease_expires, now_iso, payload.session_id))
+            if session["lease_expires_at"] and session["lease_expires_at"] <= now_iso:
+                conn.execute("UPDATE sessions SET status = 'PAUSED', paused_at = ?, updated_at = ? WHERE id = ?", (now_iso, now_iso, payload.session_id))
+                conn.execute("INSERT INTO session_events (id, session_id, event_type, reason, created_at) VALUES (?, ?, 'LEASE_EXPIRED', 'Heartbeat lease expired', ?)", (f"EVENT-{uuid.uuid4().hex[:12].upper()}", payload.session_id, now_iso))
+            else:
+                lease_expires = (now + timedelta(seconds=10)).isoformat().replace("+00:00", "Z")
+                conn.execute("UPDATE sessions SET lease_expires_at = ?, updated_at = ? WHERE id = ?", (lease_expires, now_iso, payload.session_id))
             session = conn.execute("SELECT id, status, lease_id, lease_expires_at FROM sessions WHERE id = ?", (payload.session_id,)).fetchone()
     conn.execute("INSERT INTO client_events (id, pc_id, event_type, agent_version, session_id, created_at) VALUES (?, ?, 'HEARTBEAT', ?, ?, ?)", (f"CLIENT-EVENT-{uuid.uuid4().hex[:12].upper()}", pc_id, payload.agent_version, payload.session_id, now_iso))
     return HeartbeatResponse(

@@ -41,3 +41,24 @@ def test_agent_heartbeat_and_connection_loss_state():
     assert agent.state == "PAUSED_BY_CONNECTION"
     assert states == ["CONNECTED", "PAUSED_BY_CONNECTION"]
     client.close()
+
+
+def test_agent_does_not_auto_resume_after_connection_recovery():
+    responses = iter([
+        {"session_status": "ACTIVE", "server_time": "2026-09-23T00:00:00Z"},
+        {"session_status": "ACTIVE", "server_time": "2026-09-23T00:00:02Z"},
+    ])
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=next(responses), request=request)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    agent = ClientAgent(AgentConfig("http://server", "PC-01", "secret", "2.4.1"), http_client=client)
+    agent.set_session("SESSION-1")
+    agent.heartbeat()
+    agent.state = "PAUSED_BY_CONNECTION"
+
+    agent.heartbeat()
+
+    assert agent.state == "PAUSED"
+    client.close()

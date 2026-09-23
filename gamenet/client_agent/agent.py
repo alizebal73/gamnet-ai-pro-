@@ -35,6 +35,7 @@ class ClientAgent:
         self.session_id = session_id
 
     def heartbeat(self) -> dict:
+        was_connection_paused = self.state == "PAUSED_BY_CONNECTION"
         try:
             response = self._client.post(
                 f"{self.config.server_url.rstrip('/')}/api/v1/devices/{self.config.pc_id}/heartbeat",
@@ -47,9 +48,12 @@ class ClientAgent:
             )
             response.raise_for_status()
             body = response.json()
-            self._set_state("CONNECTED")
-            if body.get("session_status") == "PAUSED":
+            if body.get("session_status") == "PAUSED" or (
+                was_connection_paused and body.get("session_status") == "ACTIVE"
+            ):
                 self._set_state("PAUSED")
+            else:
+                self._set_state("CONNECTED")
             return body
         except (httpx.HTTPError, ValueError):
             self._set_state("PAUSED_BY_CONNECTION")
