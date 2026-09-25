@@ -213,23 +213,3 @@
 
 #### Resolution
 نتیجه نهایی و وضعیت.
-
-
-## ⚠️ External audit attached on 2026-09-25 — repository mismatch
-
-یک سند ممیزی خارجی در تاریخ 2026-09-25 بررسی شد، اما محتوای آن با repository فعلی `alizebal73/gamnet-ai-pro-` منطبق نیست و نباید بدون تطبیق به‌عنوان نقشهٔ راه این repo اجرا شود.
-
-### شواهد اختلاف
-- سند خارجی ساختارهای `prisma/schema.prisma`، `local_server/` و `shared/models/` را مبنا قرار می‌دهد.
-- repository فعلی طبق `AGENTS.md` و ساختار واقعی خود از `gamenet/server/`، `database/migrations/` و SQLite استفاده می‌کند.
-- مسیرهای کلیدی ذکرشده در سند خارجی مانند `local_server/app/routes/sessions.py` و `prisma/schema.prisma` در repository فعلی وجود ندارند.
-- repository فعلی همچنین migration شماره 018 برای audit hash chain دارد و آخرین commit شناخته‌شده `8e7cef2d3cb840b729a9d48ae6543ec3b1bb8758` است.
-
-### نتیجه Review
-- ادعاهای سند خارجی درباره Paystack/KongaPay، Prisma/Alembic، branch isolation و مسیرهای `local_server` **برای repository فعلی اثبات‌شده نیستند**.
-- Codespace AI نباید بر اساس آن سند کد فعلی را حذف/بازطراحی/مهاجرت دهد.
-- اگر بعداً مشخص شد این سند مربوط به یک branch/repository دیگر است، باید repository و commit پایهٔ آن جداگانه مشخص شود و سپس فقط موارد قابل نگاشت بررسی شوند.
-- این مورد صرفاً یک Review/Verification note است و دستور تغییر کد نیست.
-
-### سؤال باز
-آیا سند خارجی مربوط به repository دیگری است یا نسخهٔ دیگری از GameNet که باید با `gamnet-ai-pro-` ادغام شود؟ تا مشخص‌شدن این موضوع، workflow اصلی فعلی همین repository و مستندات داخل آن است.
